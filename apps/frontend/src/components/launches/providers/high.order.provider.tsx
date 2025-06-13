@@ -45,6 +45,9 @@ import useSWR from 'swr';
 import { InternalChannels } from '@gitroom/frontend/components/launches/internal.channels';
 import { MergePost } from '@gitroom/frontend/components/launches/merge.post';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { useSet } from '@gitroom/frontend/components/launches/set.context';
+import { SeparatePost } from '@gitroom/frontend/components/launches/separate.post';
+import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 
 // Simple component to change back to settings on after changing tab
 export const SetTab: FC<{
@@ -110,6 +113,7 @@ export const withProvider = function <T extends object>(
     }>;
     hideMenu?: boolean;
     show: boolean;
+    hideEditOnlyThis?: boolean;
   }) => {
     const existingData = useExistingData();
     const t = useT();
@@ -170,9 +174,14 @@ export const withProvider = function <T extends object>(
       }
     );
 
+    const set = useSet();
+
     // this is a smart function, it updates the global value without updating the states (too heavy) and set the settings validation
     const form = useValues(
-      existingData.settings,
+      set?.set
+        ? set?.set?.posts?.find((p) => p?.integration?.id === props?.id)
+            ?.settings
+        : existingData.settings,
       props.id,
       props.identifier,
       editInPlace ? InPlaceValue : props.value,
@@ -195,6 +204,7 @@ export const withProvider = function <T extends object>(
       },
       [InPlaceValue]
     );
+
     const merge = useCallback(() => {
       setInPlaceValue(
         InPlaceValue.reduce(
@@ -216,6 +226,20 @@ export const withProvider = function <T extends object>(
         )
       );
     }, [InPlaceValue]);
+
+    const separatePosts = useCallback(
+      (posts: string[]) => {
+        setInPlaceValue(
+          posts.map((p, i) => ({
+            content: p,
+            id: InPlaceValue?.[i]?.id || makeId(10),
+            image: InPlaceValue?.[i]?.image || [],
+          }))
+        );
+      },
+      [InPlaceValue]
+    );
+
     const changeImage = useCallback(
       (index: number) =>
         (newValue: {
@@ -451,7 +475,7 @@ export const withProvider = function <T extends object>(
                   </Button>
                 </div>
               )}
-              {!existingData.integration && (
+              {!existingData.integration && !props.hideEditOnlyThis && (
                 <div className="flex-1 flex">
                   <Button
                     className="text-white rounded-[4px] flex-1 !bg-red-700 overflow-hidden whitespace-nowrap"
@@ -596,11 +620,25 @@ export const withProvider = function <T extends object>(
                       </div>
                     </Fragment>
                   ))}
-                  {InPlaceValue.length > 1 && (
+                  <div className="flex gap-[4px]">
+                    {InPlaceValue.length > 1 && (
+                      <div>
+                        <MergePost merge={merge} />
+                      </div>
+                    )}
                     <div>
-                      <MergePost merge={merge} />
+                      <SeparatePost
+                        changeLoading={setUploading}
+                        posts={InPlaceValue.map((p) => p.content)}
+                        len={
+                          typeof maximumCharacters === 'number'
+                            ? maximumCharacters
+                            : 10000
+                        }
+                        merge={separatePosts}
+                      />
                     </div>
-                  )}
+                  </div>
                 </div>
               </EditorWrapper>,
               document.querySelector('#renderEditor')!
